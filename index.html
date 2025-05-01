@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tactical Steganography</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans">
+  <div class="p-6">
+    <!-- Header -->
+    <div class="flex items-center gap-3 mb-6">
+      <div class="text-red-600 text-2xl">🛡️</div>
+      <h1 class="text-xl font-bold text-lime-300">TACTICAL STEGANOGRAPHY</h1>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex space-x-2 mb-4">
+      <button id="encrypt-tab" class="bg-lime-600 px-4 py-2 rounded text-white font-semibold">ENCRYPT</button>
+      <button id="decrypt-tab" class="bg-gray-700 px-4 py-2 rounded text-gray-300">DECRYPT</button>
+    </div>
+
+    <!-- Main Section -->
+    <div>
+      <!-- Encrypt Section -->
+      <div id="encrypt-section" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- Encode Message Section -->
+        <div class="md:col-span-2 bg-gray-800 p-5 rounded shadow">
+          <h2 class="text-lg font-semibold mb-4">🔒 ENCODE MESSAGE</h2>
+
+          <form id="encode-form" class="space-y-4" enctype="multipart/form-data">
+            <!-- Image Upload -->
+            <div>
+              <label class="block text-sm text-gray-400 mb-1" for="encode-image">TARGET IMAGE</label>
+              <input type="file" id="encode-image" name="image" accept=".jpg,.jpeg,.png,.bmp" required
+                class="w-full bg-gray-700 text-white p-3 rounded" />
+              <p class="text-xs text-gray-500 mt-1">SUPPORTED: JPG, PNG, BMP (MAX 10MB)</p>
+            </div>
+
+            <!-- Message Input -->
+            <div>
+              <label class="block text-sm text-gray-400 mb-1" for="encode-message">MESSAGE CONTENT</label>
+              <textarea id="encode-message" name="message" maxlength="500" placeholder="Enter your confidential message here..."
+                class="w-full bg-gray-700 text-white p-3 rounded h-24 resize-none" required></textarea>
+              <div class="text-xs text-gray-500 mt-1 flex justify-between">
+                <span>CLASSIFIED</span><span id="char-count">0/500 CHARACTERS</span>
+              </div>
+            </div>
+
+            <!-- Protocol Selection -->
+            <div>
+              <p class="text-sm text-gray-400 mb-2">ENCRYPTION PROTOCOL</p>
+              <div class="space-y-2">
+                <label class="block bg-gray-700 p-3 rounded flex items-center gap-2 cursor-pointer border-l-4 border-lime-500">
+                  <input type="radio" name="method" value="lsb" checked class="accent-lime-500" />
+                  <div>
+                    <strong>LSB</strong><br />
+                    <span class="text-xs text-gray-400">Least Significant Bit - Best for larger messages</span>
+                  </div>
+                </label>
+                <label class="block bg-gray-700 p-3 rounded flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="method" value="dct" class="accent-lime-500" />
+                  <div>
+                    <strong>DCT</strong><br />
+                    <span class="text-xs text-gray-400">Discrete Cosine Transform</span>
+                  </div>
+                </label>
+                <label class="block bg-gray-700 p-3 rounded flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="method" value="patchwork" class="accent-lime-500" />
+                  <div>
+                    <strong>PATCHWORK</strong><br />
+                    <span class="text-xs text-gray-400">Patchwork Watermarking</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <!-- Encode Button -->
+            <button type="submit" class="bg-lime-600 w-full py-2 rounded font-semibold text-white mt-2">⬆ ENCODE MESSAGE</button>
+          </form>
+        </div>
+
+        <!-- Field Manual -->
+        <div class="bg-gray-800 p-5 rounded shadow">
+          <h2 class="text-lg font-semibold mb-4">📘 FIELD MANUAL</h2>
+          <div class="space-y-4 text-sm">
+            <div class="bg-gray-700 p-3 rounded">
+              <strong>🔐 LSB ALGORITHM</strong>
+              <p>Least Significant Bit (LSB) stores data in the least important bit of each pixel. High capacity, but less resistant to image processing.</p>
+            </div>
+            <div class="bg-gray-700 p-3 rounded">
+              <strong>🔐 DCT ALGORITHM</strong>
+              <p>Discrete Cosine Transform (DCT) hides data in frequency domain. More resistant to compression and image processing.</p>
+            </div>
+            <div class="bg-gray-700 p-3 rounded">
+              <strong>🔐 PATCHWORK ALGORITHM</strong>
+              <p>Patchwork watermarking uses statistical methods to embed data. Highly resistant to detection and tampering attempts.</p>
+            </div>
+            <div class="bg-red-800 p-3 rounded text-red-300">
+              <strong>⚠️ SECURITY ADVISORY</strong>
+              <p>Different algorithms provide varying levels of security and capacity. Choose based on mission requirements and threat assessment.</p>
+            </div>
+          </div>
+
+          <button class="bg-black border border-lime-500 text-lime-400 w-full py-2 mt-6 rounded font-semibold">
+            🛡️ SECURE COMMUNICATIONS PROTOCOL
+          </button>
+        </div>
+      </div>
+
+      <!-- Decrypt Section -->
+      <div id="decrypt-section" class="hidden bg-gray-800 p-5 rounded shadow">
+        <h2 class="text-lg font-semibold mb-4">🔓 DECODE MESSAGE</h2>
+
+        <form id="decode-form" class="space-y-4" enctype="multipart/form-data">
+          <!-- Image Upload -->
+          <div>
+            <label class="block text-sm text-gray-400 mb-1" for="decode-image">WATERMARKED IMAGE</label>
+            <input type="file" id="decode-image" name="image" accept=".jpg,.jpeg,.png,.bmp" required
+              class="w-full bg-gray-700 text-white p-3 rounded" />
+          </div>
+
+          <!-- Patchwork extra inputs -->
+          <div id="patchwork-decode-extra" class="hidden space-y-4">
+            <div>
+              <label class="block text-sm text-gray-400 mb-1" for="original-image">ORIGINAL IMAGE</label>
+              <input type="file" id="original-image" name="original_image" accept=".jpg,.jpeg,.png,.bmp"
+                class="w-full bg-gray-700 text-white p-3 rounded" />
+            </div>
+            <div>
+              <label class="block text-sm text-gray-400 mb-1" for="pairs-input">PAIRS (JSON)</label>
+              <textarea id="pairs-input" name="pairs" placeholder='Enter pairs as JSON array, e.g. [[x1,y1,x2,y2], ...]'
+                class="w-full bg-gray-700 text-white p-3 rounded h-24 resize-none"></textarea>
+            </div>
+            <div>
+              <label class="block text-sm text-gray-400 mb-1" for="alpha-input">ALPHA</label>
+              <input type="number" id="alpha-input" name="alpha" min="0" step="any" class="w-full bg-gray-700 text-white p-3 rounded" />
+            </div>
+          </div>
+
+          <!-- Protocol Selection -->
+          <div>
+            <p class="text-sm text-gray-400 mb-2">DECRYPTION PROTOCOL</p>
+            <div class="space-y-2">
+              <label class="block bg-gray-700 p-3 rounded flex items-center gap-2 cursor-pointer border-l-4 border-lime-500">
+                <input type="radio" name="method" value="lsb" checked class="accent-lime-500" />
+                <div>
+                  <strong>LSB</strong><br />
+                  <span class="text-xs text-gray-400">Least Significant Bit - Best for larger messages</span>
+                </div>
+              </label>
+              <label class="block bg-gray-700 p-3 rounded flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="method" value="dct" class="accent-lime-500" />
+                <div>
+                  <strong>DCT</strong><br />
+                  <span class="text-xs text-gray-400">Discrete Cosine Transform</span>
+                </div>
+              </label>
+              <label class="block bg-gray-700 p-3 rounded flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="method" value="patchwork" class="accent-lime-500" />
+                <div>
+                  <strong>PATCHWORK</strong><br />
+                  <span class="text-xs text-gray-400">Patchwork Watermarking</span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Decode Button -->
+          <button type="submit" class="bg-lime-600 w-full py-2 rounded font-semibold text-white mt-2">⬇ DECODE MESSAGE</button>
+        </form>
+      </div>
+
+      <!-- Result Display -->
+      <div id="result-display" class="mt-6 p-4 bg-gray-800 rounded shadow text-lime-300 font-mono whitespace-pre-wrap"></div>
+    </div>
+  </div>
+
+  <script>
+    // Tab switching
+    const encryptTab = document.getElementById('encrypt-tab');
+    const decryptTab = document.getElementById('decrypt-tab');
+    const encryptSection = document.getElementById('encrypt-section');
+    const decryptSection = document.getElementById('decrypt-section');
+    const resultDisplay = document.getElementById('result-display');
+
+    encryptTab.addEventListener('click', () => {
+      encryptTab.classList.add('bg-lime-600', 'text-white');
+      encryptTab.classList.remove('bg-gray-700', 'text-gray-300');
+      decryptTab.classList.remove('bg-lime-600', 'text-white');
+      decryptTab.classList.add('bg-gray-700', 'text-gray-300');
+      encryptSection.classList.remove('hidden');
+      decryptSection.classList.add('hidden');
+      resultDisplay.textContent = '';
+    });
+
+    decryptTab.addEventListener('click', () => {
+      decryptTab.classList.add('bg-lime-600', 'text-white');
+      decryptTab.classList.remove('bg-gray-700', 'text-gray-300');
+      encryptTab.classList.remove('bg-lime-600', 'text-white');
+      encryptTab.classList.add('bg-gray-700', 'text-gray-300');
+      decryptSection.classList.remove('hidden');
+      encryptSection.classList.add('hidden');
+      resultDisplay.textContent = '';
+    });
+
+    // Character count for message textarea
+    const messageTextarea = document.getElementById('encode-message');
+    const charCountSpan = document.getElementById('char-count');
+    messageTextarea.addEventListener('input', () => {
+      charCountSpan.textContent = `${messageTextarea.value.length}/500 CHARACTERS`;
+    });
+
+    // Show/hide patchwork extra inputs in decode form
+    const decodeForm = document.getElementById('decode-form');
+    const patchworkDecodeExtra = document.getElementById('patchwork-decode-extra');
+    decodeForm.method.forEach(radio => {
+      radio.addEventListener('change', () => {
+        if (decodeForm.method.value === 'patchwork') {
+          patchworkDecodeExtra.classList.remove('hidden');
+          // Make patchwork inputs required
+          decodeForm.original_image.required = true;
+          decodeForm.pairs.required = true;
+          decodeForm.alpha.required = true;
+        } else {
+          patchworkDecodeExtra.classList.add('hidden');
+          decodeForm.original_image.required = false;
+          decodeForm.pairs.required = false;
+          decodeForm.alpha.required = false;
+        }
+      });
+    });
+
+    // Handle encode form submission
+    const encodeForm = document.getElementById('encode-form');
+    encodeForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      resultDisplay.textContent = 'Encoding...';
+
+      const formData = new FormData(encodeForm);
+
+      try {
+        const response = await fetch('/encode', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await response.json();
+        if (data.success) {
+          resultDisplay.textContent = `Encoding successful! Output file: ${data.output_path}`;
+          if (formData.get('method') === 'patchwork') {
+            // Show pairs and alpha info
+            resultDisplay.textContent += `\nPairs: ${data.pairs}\nAlpha: ${data.alpha}`;
+          }
+        } else {
+          resultDisplay.textContent = `Encoding failed: ${data.error}`;
+        }
+      } catch (error) {
+        resultDisplay.textContent = `Error: ${error.message}`;
+      }
+    });
+
+    // Handle decode form submission
+    decodeForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      resultDisplay.textContent = 'Decoding...';
+
+      const formData = new FormData(decodeForm);
+
+      try {
+        const response = await fetch('/decode', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await response.json();
+        if (data.success) {
+          resultDisplay.textContent = `Decoding successful!\nMessage: ${data.message}`;
+        } else {
+          resultDisplay.textContent = `Decoding failed: ${data.error}`;
+        }
+      } catch (error) {
+        resultDisplay.textContent = `Error: ${error.message}`;
+      }
+    });
+  </script>
+</body>
+</html>
