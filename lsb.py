@@ -7,7 +7,7 @@ def encode(image_path, message, output_dir=None):
     if output_dir:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-        output_path = os.path.join(output_dir, "stego_image.png")
+        output_path = os.path.join(output_dir, "lsb_stego.png")
     else:
         output_path = "static/uploads/stego_image.png"
 

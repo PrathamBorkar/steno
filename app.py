@@ -4,6 +4,8 @@ from werkzeug.utils import secure_filename
 from lsb import encode as lsb_encode, decode as lsb_decode
 from dct import encode as dct_encode, decode as dct_decode
 from patchwork import embed_watermark, extract_watermark
+from PVD_Encode import embed_pvd
+from PVD_Decode import extract_pvd
 import tempfile
 
 app = Flask(__name__)
@@ -17,6 +19,15 @@ def save_uploaded_file(file_storage):
     return filepath
 
 import logging
+
+# Add new imports at the top
+from flask import send_from_directory
+import os.path
+
+# Add new route to serve images
+@app.route('/get_image/<filename>')
+def get_image(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 @app.route('/encode', methods=['POST'])
 def encode():
@@ -51,81 +62,44 @@ def encode():
             output_path = lsb_encode(image_path, message, output_dir=output_dir)
         elif method == 'dct':
             output_path = dct_encode(image_path, message, output_dir=output_dir)
+        elif method == 'pvd':
+            output_path = embed_pvd(image_path, message, output_dir=output_dir)
         elif method == 'patchwork':
-            # Patchwork does not embed a message, so we treat message as alpha or ignore
-            # For simplicity, use default alpha and num_pairs
-            watermarked_image, pairs, alpha = embed_watermark(image_path)
-            output_path = os.path.join(output_dir, 'patchwork_stego.png')
-            # Save watermarked image to output_path
-            from PIL import Image
-            watermarked_image_pil = Image.fromarray(watermarked_image)
-            watermarked_image_pil.save(output_path)
-            import json
-            pairs_json = json.dumps(pairs.tolist())
-            return jsonify(success=True, output_path=output_path, pairs=pairs_json, alpha=alpha)
+            output_path = embed_watermark(image_path, message, output_dir=output_dir)
         else:
             return jsonify(success=False, error='Invalid method')
     except Exception as e:
         logging.exception("Encoding failed")
         return jsonify(success=False, error=str(e))
 
-    return jsonify(success=True, output_path=output_path)
+    return jsonify(success=True, 
+                  output_path=output_path,
+                  output_filename=os.path.basename(output_path))
 
 @app.route('/decode', methods=['POST'])
 def decode():
     method = request.form.get('method', '').lower()
 
-    if method == 'patchwork':
-        # Patchwork decoding requires original image, watermarked image, pairs, and alpha
-        if 'image' not in request.files or 'original_image' not in request.files:
-            return jsonify(success=False, error='Both watermarked image and original image must be provided for patchwork decoding')
-        image_file = request.files['image']
-        original_image_file = request.files['original_image']
-        pairs_str = request.form.get('pairs', '')
-        alpha_str = request.form.get('alpha', '')
+    if 'image' not in request.files:
+        return jsonify(success=False, error='No image file provided')
+    image_file = request.files['image']
+    image_path = save_uploaded_file(image_file)
 
-        if not pairs_str:
-            return jsonify(success=False, error='Pairs data is required for patchwork decoding')
-        if not alpha_str:
-            return jsonify(success=False, error='Alpha value is required for patchwork decoding')
+    try:
+        if method == 'lsb':
+            message = lsb_decode(image_path)
+        elif method == 'dct':
+            message = dct_decode(image_path)
+        elif method == 'pvd':
+            message = extract_pvd(image_path)
+        elif method == 'patchwork':
+            message = extract_watermark(image_path)
+        else:
+            return jsonify(success=False, error='Invalid method')
+    except Exception as e:
+        return jsonify(success=False, error=str(e))
 
-        try:
-            import json
-            pairs = json.loads(pairs_str)
-            alpha = float(alpha_str)
-        except Exception as e:
-            return jsonify(success=False, error=f'Invalid pairs or alpha format: {str(e)}')
-
-        image_path = save_uploaded_file(image_file)
-        original_image_path = save_uploaded_file(original_image_file)
-
-        try:
-            # Call extract_watermark from patchwork.py
-            from patchwork import extract_watermark
-            extract_watermark(original_image_path, image_path, pairs, alpha)
-            message = "Patchwork watermark detection completed. Check server logs for details."
-        except Exception as e:
-            return jsonify(success=False, error=str(e))
-
-        return jsonify(success=True, message=message)
-
-    else:
-        if 'image' not in request.files:
-            return jsonify(success=False, error='No image file provided')
-        image_file = request.files['image']
-        image_path = save_uploaded_file(image_file)
-
-        try:
-            if method == 'lsb':
-                message = lsb_decode(image_path)
-            elif method == 'dct':
-                message = dct_decode(image_path)
-            else:
-                return jsonify(success=False, error='Invalid method')
-        except Exception as e:
-            return jsonify(success=False, error=str(e))
-
-        return jsonify(success=True, message=message)
+    return jsonify(success=True, message=message)
 
 from flask import send_file
 import os

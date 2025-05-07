@@ -1,79 +1,116 @@
 import cv2
 import numpy as np
+import os
 
+def text_to_bits(text):
+    """Convert text to binary string"""
+    return ''.join(format(ord(char), '08b') for char in text)
 
-def embed_watermark(image_path, alpha=5, num_pairs=10000):
-    """
-    Embeds a watermark using the Patchwork Algorithm.
-    Args:
-        image_path (str): Path to the input grayscale image.
-        alpha (float): Strength of the watermark.
-        num_pairs (int): Number of pixel pairs to modify.
-    Returns:
-        watermarked_image (np.array): The watermarked image array.
-        pairs (np.array): Array of pixel coordinate pairs used.
-        alpha (float): The alpha value used.
-    """
+def bits_to_text(bits):
+    """Convert binary string back to text"""
+    return ''.join(chr(int(bits[i:i+8], 2)) for i in range(0, len(bits), 8))
+
+def embed_watermark(image_path, message, output_dir=None):
+    """Embeds a message using the Patchwork Algorithm."""
+    # Convert message to binary
+    message_bits = text_to_bits(message)
+    message_length = len(message_bits)
+    
+    # Read and prepare image
     image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
     if image is None:
         raise ValueError(f"Image not found or invalid format: {image_path}")
-
+    
     height, width = image.shape
     watermarked_image = image.astype(np.float64)
+    
+    # Parameters
+    alpha = 3  # Reduced for better imperceptibility
+    bits_per_block = 2  # Number of bits embedded per block
+    block_size = 8  # Size of each block
+    
+    # Calculate required blocks
+    blocks_needed = (message_length + bits_per_block - 1) // bits_per_block
+    if blocks_needed * block_size * block_size > height * width:
+        raise ValueError("Message too large for image")
+    
+    # Embed length first
+    length_bits = format(message_length, '032b')
+    
+    # Embed message
+    bit_index = 0
+    for block_idx in range(blocks_needed + 4):  # +4 blocks for length
+        row = (block_idx * block_size) % (height - block_size)
+        col = ((block_idx * block_size) // (height - block_size)) * block_size
+        
+        if col >= width - block_size:
+            raise ValueError("Image too small for message")
+        
+        block = watermarked_image[row:row+block_size, col:col+block_size]
+        
+        # Get current bits to embed
+        if block_idx < 4:  # First 4 blocks for length
+            current_bits = length_bits[block_idx * bits_per_block:(block_idx + 1) * bits_per_block]
+        elif bit_index < message_length:
+            current_bits = message_bits[bit_index:min(bit_index + bits_per_block, message_length)]
+            bit_index += bits_per_block
+        
+        # Modify block based on bits
+        if len(current_bits) > 0:
+            for bit_idx, bit in enumerate(current_bits):
+                if bit == '1':
+                    block[bit_idx:bit_idx+4, :] += alpha
+                    block[bit_idx+4:bit_idx+8, :] -= alpha
+    
+    watermarked_image = np.clip(watermarked_image, 0, 255).astype(np.uint8)
+    
+    # Generate output path
+    if output_dir is None:
+        output_dir = os.path.dirname(image_path)
+    output_path = os.path.join(output_dir, f"{os.path.splitext(os.path.basename(image_path))[0]}_patchwork.png")
+    
+    cv2.imwrite(output_path, watermarked_image)
+    return output_path
 
-    np.random.seed(42)
-    pairs = []
-    used_coords = set()
-
-    while len(pairs) < num_pairs:
-        x1, y1 = np.random.randint(0, height), np.random.randint(0, width)
-        x2, y2 = np.random.randint(0, height), np.random.randint(0, width)
-        # Ensure pairs are distinct and not repeated
-        if (x1, y1) != (x2, y2) and (x1, y1) not in used_coords and (x2, y2) not in used_coords:
-            pairs.append((x1, y1, x2, y2))
-            used_coords.add((x1, y1))
-            used_coords.add((x2, y2))
-
-    pairs = np.array(pairs)
-
-    for x1, y1, x2, y2 in pairs:
-        watermarked_image[x1, y1] = np.clip(watermarked_image[x1, y1] + alpha, 0, 255)
-        watermarked_image[x2, y2] = np.clip(watermarked_image[x2, y2] - alpha, 0, 255)
-
-    watermarked_image = watermarked_image.astype(np.uint8)
-    return watermarked_image, pairs, alpha
-
-
-def extract_watermark(original_path, watermarked_path, pairs, alpha):
-    """
-    Extracts watermark by comparing original and watermarked images using correlation.
-    Args:
-        original_path (str): Path to the original image.
-        watermarked_path (str): Path to the watermarked image.
-        pairs (list or np.array): List of (x1, y1, x2, y2) pixel coordinate pairs.
-        alpha (float): Alpha value used during embedding.
-    Returns:
-        detection_result (dict): Includes detection strength and flag.
-    """
-    original = cv2.imread(original_path, cv2.IMREAD_GRAYSCALE)
-    watermarked = cv2.imread(watermarked_path, cv2.IMREAD_GRAYSCALE)
-
-    if original is None or watermarked is None:
-        raise ValueError("One or both images could not be read.")
-
-    original = original.astype(np.float64)
-    watermarked = watermarked.astype(np.float64)
-
-    diffs = []
-    for x1, y1, x2, y2 in pairs:
-        diff = (watermarked[x1, y1] - original[x1, y1]) - (watermarked[x2, y2] - original[x2, y2])
-        diffs.append(diff)
-
-    diffs = np.array(diffs)
-    detection_strength = np.sum(diffs) / (len(pairs) * alpha)
-    watermark_detected = detection_strength > 0.05
-
-    return {
-        "detection_strength": detection_strength,
-        "watermark_detected": watermark_detected
-    }
+def extract_watermark(image_path):
+    """Extracts the hidden message from a watermarked image."""
+    image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    if image is None:
+        raise ValueError("Image could not be read")
+    
+    height, width = image.shape
+    block_size = 8
+    bits_per_block = 2
+    
+    # Extract length first
+    length_bits = ""
+    for block_idx in range(4):
+        row = (block_idx * block_size) % (height - block_size)
+        col = ((block_idx * block_size) // (height - block_size)) * block_size
+        block = image[row:row+block_size, col:col+block_size]
+        
+        for bit_idx in range(bits_per_block):
+            upper_half = np.mean(block[bit_idx:bit_idx+4, :])
+            lower_half = np.mean(block[bit_idx+4:bit_idx+8, :])
+            length_bits += '1' if upper_half > lower_half else '0'
+    
+    message_length = int(length_bits, 2)
+    blocks_needed = (message_length + bits_per_block - 1) // bits_per_block
+    
+    # Extract message
+    message_bits = ""
+    for block_idx in range(4, blocks_needed + 4):
+        row = (block_idx * block_size) % (height - block_size)
+        col = ((block_idx * block_size) // (height - block_size)) * block_size
+        block = image[row:row+block_size, col:col+block_size]
+        
+        for bit_idx in range(bits_per_block):
+            if len(message_bits) < message_length:
+                upper_half = np.mean(block[bit_idx:bit_idx+4, :])
+                lower_half = np.mean(block[bit_idx+4:bit_idx+8, :])
+                message_bits += '1' if upper_half > lower_half else '0'
+    
+    try:
+        return bits_to_text(message_bits[:message_length])
+    except:
+        raise ValueError("Failed to extract valid message")
