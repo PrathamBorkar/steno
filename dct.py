@@ -1,225 +1,165 @@
-from PIL import Image
+import cv2
 import numpy as np
 from scipy.fftpack import dct, idct
 import os
 
-# Convert any image format to PNG and return the new file path
-def convert_to_png(image_path):
-    """Convert any image format to PNG and return the new file path."""
-    img = Image.open(image_path)
-    png_path = os.path.splitext(image_path)[0] + ".png"
-    img.save(png_path, "PNG")
-    return png_path
+# Standard JPEG luminance quantization matrix
+Q = np.array([
+    [16,11,10,16,24,40,51,61],
+    [12,12,14,19,26,58,60,55],
+    [14,13,16,24,40,57,69,56],
+    [14,17,22,29,51,87,80,62],
+    [18,22,37,56,68,109,103,77],
+    [24,35,55,64,81,104,113,92],
+    [49,64,78,87,103,121,120,101],
+    [72,92,95,98,112,100,103,99]
+])
 
-# Convert string to binary bits with terminator
-def string_to_bits(s):
+def string_to_bits(text):
     """Convert a string into binary bits with terminator."""
-    # Add a special terminator pattern (8 bytes of zeros) to mark the end of the message
-    s += '\0\0\0\0\0\0\0\0'
-    return ''.join(format(ord(c), '08b') for c in s)
+    # Add a special terminator pattern to mark the end of the message
+    text += '\0\0\0\0'
+    return ''.join(format(ord(c), '08b') for c in text)
 
-# Convert binary bits back to string, handling terminator
-def bits_to_string(b):
+def bits_to_string(bits):
     """Convert binary bits back into a string, stopping at the terminator."""
     result = ""
-    for i in range(0, len(b), 8):
-        if i + 8 <= len(b):
-            byte = b[i:i+8]
+    for i in range(0, len(bits), 8):
+        if i + 8 <= len(bits):
+            byte = bits[i:i+8]
             char_code = int(byte, 2)
             if char_code == 0:
-                # Check for terminator sequence (8 consecutive zero bytes)
-                if i + 64 <= len(b):
-                    next_bytes = b[i:i+64]
-                    if next_bytes == '0' * 64:
+                # Check for terminator sequence
+                if i + 32 <= len(bits):
+                    next_bytes = bits[i:i+32]
+                    if next_bytes == '0' * 32:
                         break
             result += chr(char_code)
     return result
 
-# Embed a secret message into an image using DCT
-def embed_message(image_path, message, output_path="watermarked_image.png"):
-    """Embed a secret message into an image using DCT."""
-    image_path = convert_to_png(image_path)
-
-    img = Image.open(image_path)
-    img = img.convert("RGB")  # Ensure image is in RGB format
-    img_np = np.array(img)
+def embed_message(image_path, message, output_path="stego_image.png"):
+    """Embed a secret message into an image using DCT with quantization."""
+    # Load and resize image
+    img = cv2.imread(image_path)
+    if img is None:
+        raise ValueError(f"Image not found or invalid format: {image_path}")
     
-    blue_channel = img_np[:, :, 2]  # Choose blue channel for embedding the message
+    # Convert to YCrCb color space
+    ycrcb = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
+    y, cr, cb = cv2.split(ycrcb)
+    y = y.astype(np.float32)
 
-    bits = string_to_bits(message)  # Convert message to binary with terminator
-    bit_idx = 0
-    block_size = 8  # Define block size for DCT
-    h, w = blue_channel.shape  # Get the image dimensions
-
-    stego_channel = np.copy(blue_channel)
+    # Message to binary with magic header
+    bin_msg = string_to_bits(message)
     
-    # Store the length of the message in the first 32 bits (4 bytes)
-    msg_length = len(message)
-    msg_length_bits = format(msg_length, '032b')
+    # Store the message length first (16 bits)
+    magic_header = "1010101010101010"  # Easy to recognize pattern
+    msg_length_bin = format(len(message), '016b')  # 16 bits for length
     
-    # Embed message length
-    for idx in range(32):
-        i, j = idx // 4, (idx % 4) * 2
-        block = blue_channel[i:i+block_size, j:j+block_size]
-        
-        if block.shape[0] != block_size or block.shape[1] != block_size:
-            continue
+    # Complete message: magic header + length + actual message
+    bin_msg = magic_header + msg_length_bin + bin_msg
+    total_bits = len(bin_msg)
+    msg_index = 0
+
+    h, w = y.shape
+    for row in range(0, h-8, 8):
+        for col in range(0, w-8, 8):
+            if msg_index >= total_bits:
+                break
+
+            block = y[row:row+8, col:col+8]
+            dct_block = dct(dct(block.T, norm='ortho').T, norm='ortho')
+            quant_block = np.round(dct_block / Q)
+
+            # Modify DC coefficient (top-left corner)
+            dc = int(quant_block[0, 0])
+            sign = 1 if dc >= 0 else -1
             
-        dct_block = dct(dct(block.T, norm='ortho').T, norm='ortho')
-        
-        coeff = dct_block[4, 4]
-        int_coeff = int(round(coeff))
-        bit_to_embed = int(msg_length_bits[idx])
-        
-        if (int_coeff % 2) != bit_to_embed:
-            int_coeff += 1 if int_coeff % 2 == 0 else -1
-            
-        dct_block[4, 4] = np.float32(int_coeff)
-        
-        idct_block = idct(idct(dct_block.T, norm='ortho').T, norm='ortho')
-        stego_channel[i:i+block_size, j:j+block_size] = np.clip(idct_block, 0, 255)
+            # Embed bit in LSB of DC coefficient
+            if msg_index < total_bits:
+                dc_bin = format(abs(dc), '08b')
+                new_dc = int(dc_bin[:-1] + bin_msg[msg_index], 2) * sign
+                quant_block[0, 0] = new_dc
+                msg_index += 1
 
-    # Use a predefined starting point for the actual message embedding
-    # This ensures synchronization during extraction
-    start_i, start_j = 8, 0
-    i, j = start_i, start_j
-
-    # Loop over the image in blocks to embed the actual message
-    while bit_idx < len(bits):
-        if i >= h - block_size or j >= w - block_size:
-            break
-            
-        block = blue_channel[i:i+block_size, j:j+block_size]
-
-        if block.shape[0] != block_size or block.shape[1] != block_size:
-            j += block_size
-            if j >= w:
-                j = 0
-                i += block_size
-            continue
-
-        # Apply DCT to the block
-        dct_block = dct(dct(block.T, norm='ortho').T, norm='ortho')
-
-        coeff = dct_block[4, 4]  # Choose the coefficient for embedding the bit
-        int_coeff = int(round(coeff))
-        
-        if bit_idx < len(bits):
-            bit_to_embed = int(bits[bit_idx])  # Embed the bit
-
-            # Modify the coefficient to store the bit
-            if (int_coeff % 2) != bit_to_embed:
-                int_coeff += 1 if int_coeff % 2 == 0 else -1
-
-            dct_block[4, 4] = np.float32(int_coeff)
-
-            # Apply Inverse DCT to the modified block
+            # Dequantize and inverse DCT
+            dct_block = quant_block * Q
             idct_block = idct(idct(dct_block.T, norm='ortho').T, norm='ortho')
-            stego_channel[i:i+block_size, j:j+block_size] = np.clip(idct_block, 0, 255)
+            y[row:row+8, col:col+8] = idct_block
 
-            bit_idx += 1
-
-        # Move to the next block
-        j += block_size
-        if j >= w:
-            j = 0
-            i += block_size
-
-    # Merge channels back to form the stego image
-    stego_img_np = np.copy(img_np)
-    stego_img_np[:, :, 2] = stego_channel  # Replace the blue channel with the stego one
-    stego_img = Image.fromarray(stego_img_np)
-    stego_img.save(output_path, "PNG")
-
+    # Reconstruct image
+    y = np.clip(y, 0, 255).astype(np.uint8)
+    stego_img = cv2.merge([y, cr, cb])
+    stego_img = cv2.cvtColor(stego_img, cv2.COLOR_YCrCb2BGR)
+    cv2.imwrite(output_path, stego_img)
+    
     print(f"✅ Stego image saved as '{output_path}'.")
     return output_path
 
-# Extract the hidden message from the image using DCT
 def extract_message(image_path):
     """Extract a hidden message from a stego image."""
-    img = Image.open(image_path)
-    img = img.convert("RGB")  # Ensure image is in RGB format
-    img_np = np.array(img)
+    # Load image
+    img = cv2.imread(image_path)
+    if img is None:
+        raise ValueError("Image could not be read")
     
-    blue_channel = img_np[:, :, 2]  # Use the blue channel for extraction
+    # Convert to YCrCb
+    ycrcb = cv2.cvtColor(img, cv2.COLOR_BGR2YCrCb)
+    y, _, _ = cv2.split(ycrcb)
+    y = y.astype(np.float32)
 
-    block_size = 8  # Define block size for DCT
-    h, w = blue_channel.shape
+    h, w = y.shape
     
-    # First, extract the message length from the header
-    msg_length_bits = ""
-    for idx in range(32):
-        i, j = idx // 4, (idx % 4) * 2
-        block = blue_channel[i:i+block_size, j:j+block_size]
-        
-        if block.shape[0] != block_size or block.shape[1] != block_size:
-            continue
-            
-        dct_block = dct(dct(block.T, norm='ortho').T, norm='ortho')
-        
-        coeff = dct_block[4, 4]
-        int_coeff = int(round(coeff))
-        
-        msg_length_bits += str(int_coeff & 1)
-        
+    # Extract all bits from DC coefficients
+    all_bits = []
+    for row in range(0, h-8, 8):
+        for col in range(0, w-8, 8):
+            block = y[row:row+8, col:col+8]
+            dct_block = dct(dct(block.T, norm='ortho').T, norm='ortho')
+            quant_block = np.round(dct_block / Q)
+            dc = int(quant_block[0, 0])
+            # Extract LSB regardless of sign
+            all_bits.append(format(abs(dc), '08b')[-1])
+    
+    # Convert bits to string
+    extracted_bits = ''.join(all_bits)
+    
+    # Look for the magic header
+    magic_header = "1010101010101010"
+    if magic_header not in extracted_bits[:100]:
+        print("Magic header not found! Possibly corrupt data.")
+        return "ERROR: Extraction failed!"
+    
+    # Find where our real data starts
+    header_pos = extracted_bits.find(magic_header)
+    data_start = header_pos + 16  # Skip magic header
+    
+    # Extract the length
+    length_bits = extracted_bits[data_start:data_start + 16]
     try:
-        msg_length = int(msg_length_bits, 2)
+        msg_length = int(length_bits, 2)
         print(f"Detected message length: {msg_length} characters")
     except ValueError:
         print("Failed to extract message length")
         return "ERROR: Extraction failed!"
     
-    # Extract with a safety factor to ensure we get the terminator
-    total_bits = (msg_length + 20) * 8  
-    extracted_bits = ""
+    # Extract the message
+    message_start = data_start + 16  # Skip length bits
+    message_bits = extracted_bits[message_start:message_start + (msg_length * 8) + 32]  # Add extra for terminator
     
-    # Use the same predefined starting point as in embedding
-    start_i, start_j = 8, 0
-    i, j = start_i, start_j
-    bits_read = 0
-    
-    # Loop over the image in blocks
-    while bits_read < total_bits:
-        if i >= h - block_size or j >= w - block_size:
-            break
-            
-        block = blue_channel[i:i+block_size, j:j+block_size]
-
-        if block.shape[0] != block_size or block.shape[1] != block_size:
-            j += block_size
-            if j >= w:
-                j = 0
-                i += block_size
-            continue
-
-        # Apply DCT to the block
-        dct_block = dct(dct(block.T, norm='ortho').T, norm='ortho')
-
-        coeff = dct_block[4, 4]  # Extract the coefficient for the bit
-        int_coeff = int(round(coeff))
-
-        extracted_bits += str(int_coeff & 1)  # Extract the least significant bit
-        bits_read += 1
-
-        # Move to the next block
-        j += block_size
-        if j >= w:
-            j = 0
-            i += block_size
-
-    extracted_message = bits_to_string(extracted_bits)  # Convert extracted bits back to a string
+    # Convert to text
+    extracted_message = bits_to_string(message_bits)
     print(f"✅ Extracted message: {extracted_message}")
     return extracted_message
 
 # Wrapper for embed_message function
 def encode(image_path, message, output_dir=None):
-    import os
     if output_dir:
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-        output_path = os.path.join(output_dir, "stego_image.png")
+        output_path = os.path.join(output_dir, "dct_stego.png")
     else:
-        output_path = "stego_image.png"
+        output_path = "dct_stego.png"
     return embed_message(image_path, message, output_path)
 
 # Wrapper for extract_message function
@@ -230,7 +170,7 @@ def decode(image_path):
 if __name__ == "__main__":
     image_path = 'input_image.png'
     message = 'Hello, this is a secret message!'
-    encoded_image = encode(image_path, message)  # Embed the message
-    decoded_message = decode(encoded_image)  # Extract the message
+    encoded_image = encode(image_path, message)
+    decoded_message = decode(encoded_image)
     print(f"Original message: {message}")
     print(f"Decoded message: {decoded_message}")

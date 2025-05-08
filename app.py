@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, send_from_directory
 import os
 from werkzeug.utils import secure_filename
 from lsb import encode as lsb_encode, decode as lsb_decode
@@ -8,7 +8,8 @@ from PVD_Encode import embed_pvd
 from PVD_Decode import extract_pvd
 import tempfile
 
-app = Flask(__name__)
+# Update Flask app initialization
+app = Flask(__name__, static_url_path='', static_folder='static')
 app.config['UPLOAD_FOLDER'] = 'uploads'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
@@ -31,50 +32,55 @@ def get_image(filename):
 
 @app.route('/encode', methods=['POST'])
 def encode():
-    if 'image' not in request.files:
-        return jsonify(success=False, error='No image file provided')
-    image_file = request.files['image']
-    message = request.form.get('message', '')
-    method = request.form.get('method', '').lower()
-    save_dir = request.form.get('save_dir', '').strip()
-
-    if not message and method != 'patchwork':
-        return jsonify(success=False, error='No message provided for encoding')
-
-    image_path = save_uploaded_file(image_file)
-
-    # Determine output directory
-    output_dir = app.config['UPLOAD_FOLDER']
-    if save_dir:
-        # Validate and create directory if needed
-        if not os.path.isabs(save_dir):
-            # Make relative paths relative to current working directory
-            save_dir = os.path.abspath(save_dir)
-        if not os.path.exists(save_dir):
-            try:
-                os.makedirs(save_dir, exist_ok=True)
-            except Exception as e:
-                return jsonify(success=False, error=f"Failed to create directory: {str(e)}")
-        output_dir = save_dir
-
     try:
-        if method == 'lsb':
-            output_path = lsb_encode(image_path, message, output_dir=output_dir)
-        elif method == 'dct':
-            output_path = dct_encode(image_path, message, output_dir=output_dir)
-        elif method == 'pvd':
-            output_path = embed_pvd(image_path, message, output_dir=output_dir)
-        elif method == 'patchwork':
-            output_path = embed_watermark(image_path, message, output_dir=output_dir)
-        else:
-            return jsonify(success=False, error='Invalid method')
-    except Exception as e:
-        logging.exception("Encoding failed")
-        return jsonify(success=False, error=str(e))
+        # Check for image file
+        if 'image' not in request.files:
+            return jsonify(success=False, error='No image file provided')
+        
+        image_file = request.files['image']
+        if image_file.filename == '':
+            return jsonify(success=False, error='No file selected')
 
-    return jsonify(success=True, 
-                  output_path=output_path,
-                  output_filename=os.path.basename(output_path))
+        message = request.form.get('message', '')
+        method = request.form.get('method', '').lower()
+        save_dir = request.form.get('save_dir', '').strip()
+
+        if not message and method != 'patchwork':
+            return jsonify(success=False, error='No message provided for encoding')
+
+        # Save uploaded file
+        image_path = save_uploaded_file(image_file)
+
+        # Determine output directory
+        output_dir = app.config['UPLOAD_FOLDER']
+        if save_dir:
+            if not os.path.isabs(save_dir):
+                save_dir = os.path.abspath(save_dir)
+            os.makedirs(save_dir, exist_ok=True)
+            output_dir = save_dir
+
+        # Process with selected method
+        try:
+            if method == 'lsb':
+                output_path = lsb_encode(image_path, message, output_dir=output_dir)
+            elif method == 'dct':
+                output_path = dct_encode(image_path, message, output_dir=output_dir)
+            elif method == 'pvd':
+                output_path = embed_pvd(image_path, message, output_dir=output_dir)
+            elif method == 'patchwork':
+                output_path = embed_watermark(image_path, message, output_dir=output_dir)
+            else:
+                return jsonify(success=False, error='Invalid method')
+        except Exception as e:
+            logging.exception("Encoding failed")
+            return jsonify(success=False, error=str(e))
+
+        return jsonify(success=True, 
+                      output_path=output_path,
+                      output_filename=os.path.basename(output_path))
+
+    except Exception as e:
+        return jsonify(success=False, error=str(e))
 
 @app.route('/decode', methods=['POST'])
 def decode():
@@ -101,12 +107,15 @@ def decode():
 
     return jsonify(success=True, message=message)
 
-from flask import send_file
-import os
-
+# Update the index route to serve from static folder
 @app.route('/')
 def serve_index():
-    return send_file(os.path.join(os.path.abspath(os.path.dirname(__file__)), 'index.html'))
+    return send_from_directory('static', 'index.html')
+
+# Add route for serving static files
+@app.route('/<path:filename>')
+def serve_static(filename):
+    return send_from_directory('static', filename)
 
 if __name__ == '__main__':
     app.run(debug=True)

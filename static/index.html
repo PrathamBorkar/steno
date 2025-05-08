@@ -4,7 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Tactical Steganography</title>
+  <link rel="icon" href="data:,">
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/index.css">
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans">
   <div class="p-6">
@@ -129,7 +131,7 @@
             <label class="block text-sm text-gray-400 mb-1" for="decode-image">WATERMARKED IMAGE</label>
             <input type="file" id="decode-image" name="image" accept=".jpg,.jpeg,.png,.bmp" required
               class="w-full bg-gray-700 text-white p-3 rounded" />
-          </div>S
+          </div>
 
           <!-- Protocol Selection -->
           <div>
@@ -165,9 +167,7 @@
           <div id="patchwork-decode-extra" class="hidden space-y-4">
           </div>
           
-          <!-- Update the script section -->
-          <script>
-              // Remove patchwork-specific handling
+          <!-- <script>
               const decodeForm = document.getElementById('decode-form');
               
               decodeForm.addEventListener('submit', async (e) => {
@@ -239,7 +239,7 @@
                     resultDisplay.textContent = `Error: ${error.message}`;
                 }
             });
-        </script>
+        </script> -->
       </div>
 
       <!-- Result Display -->
@@ -263,7 +263,7 @@
       </div>
 
       <!-- Update the encode form submission script -->
-      <script>
+      <!-- <script>
         // Tab switching
         const encryptTab = document.getElementById('encrypt-tab');
         const decryptTab = document.getElementById('decrypt-tab');
@@ -367,6 +367,8 @@
             resultDisplay.textContent = `Error: ${error.message}`;
           }
         });
-      </script>
-</body>
+      </script> -->
+
+      <script src="/index.js"></script>
+    </body>
 </html>

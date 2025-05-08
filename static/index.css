@@ -1,0 +1,22 @@
+/* Custom styles can go here */
+.encode-section {
+    grid-template-columns: 2fr 1fr;
+}
+
+.protocol-option {
+    transition: all 0.3s ease;
+}
+
+.protocol-option:hover {
+    transform: translateX(4px);
+}
+
+.form-input {
+    transition: all 0.2s ease;
+}
+
+.form-input:focus {
+    box-shadow: 0 0 0 2px rgba(132, 204, 22, 0.5);
+}
+
+/* Add any additional custom styles here */
