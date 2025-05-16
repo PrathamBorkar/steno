@@ -38,7 +38,7 @@ decryptTab.addEventListener('click', () => {
 
 // Character count for message textarea
 messageTextarea.addEventListener('input', () => {
-    charCountSpan.textContent = `${messageTextarea.value.length}/500 CHARACTERS`;
+    charCountSpan.textContent = `${messageTextarea.value.length} CHARACTERS`;
 });
 
 // Remove the old radio button handler and replace with simplified version

@@ -17,7 +17,9 @@ def get_range_table():
     return [
         (0, 15, 2),    # (lower, upper, bits_to_hide)
         (16, 31, 3),
-        (32, 255, 4)
+        (32, 63, 4),
+        (64, 127, 5),
+        (128, 255, 6),
     ]
 
 def find_range(diff):
@@ -30,13 +32,19 @@ def find_range(diff):
 
 def embed_pvd_channel(channel_data, secret_bits, bit_idx):
     """Embed bits into a single channel using PVD."""
-    flat_channel = channel_data.flatten()
+    # Make a copy to avoid modifying the original
+    flat_channel = channel_data.flatten().copy()
+    height, width = channel_data.shape
+    
+    # Track how many bits we've embedded
+    original_bit_idx = bit_idx
     i = 0
+    
     while i < len(flat_channel) - 1 and bit_idx < len(secret_bits):
-        p1 = flat_channel[i]
-        p2 = flat_channel[i+1]
+        p1 = int(flat_channel[i])
+        p2 = int(flat_channel[i+1])
         
-        diff = abs(int(p1) - int(p2))
+        diff = abs(p1 - p2)
         lower, upper, bits_to_hide = find_range(diff)
         
         if bit_idx + bits_to_hide > len(secret_bits):
@@ -61,21 +69,44 @@ def embed_pvd_channel(channel_data, secret_bits, bit_idx):
                 i += 2
                 continue
         
-        # Modify pixels based on original relationship
+        # Calculate new pixel values with clipping to prevent overflow
         if p1 > p2:
-            flat_channel[i] = p2 + new_diff
-            flat_channel[i+1] = p2
+            new_p2 = p1 - new_diff
+            new_p1 = p1
         else:
-            flat_channel[i+1] = p1 + new_diff
-            flat_channel[i] = p1
+            new_p1 = p2 - new_diff
+            new_p2 = p2
+
         
-        flat_channel[i] = np.clip(flat_channel[i], 0, 255)
-        flat_channel[i+1] = np.clip(flat_channel[i+1], 0, 255)
+        # Assign the clipped values
+        flat_channel[i] = new_p1
+        flat_channel[i+1] = new_p2
         
         bit_idx += bits_to_hide
         i += 2
     
+    # Print debug info about this channel
+    print(f"[DEBUG] Channel embedded {bit_idx - original_bit_idx} bits")
+    
     return flat_channel.reshape(channel_data.shape), bit_idx
+
+def get_pvd_capacity(image):
+    """Calculate the maximum number of bits that can be embedded in the image."""
+    b, g, r = cv2.split(image)
+    total_capacity = 0
+    
+    for channel in [r, g, b]:
+        flat_channel = channel.flatten()
+        i = 0
+        while i < len(flat_channel) - 1:
+            p1 = flat_channel[i]
+            p2 = flat_channel[i+1]
+            diff = abs(int(p1) - int(p2))
+            _, _, bits_to_hide = find_range(diff)
+            total_capacity += bits_to_hide
+            i += 2
+    
+    return total_capacity
 
 def embed_pvd(image_path, secret_text, output_dir=None):
     # Load the color image
@@ -83,17 +114,34 @@ def embed_pvd(image_path, secret_text, output_dir=None):
     if image is None:
         raise ValueError("Image not found or could not be loaded.")
 
+    # Convert message to bits and add end marker
+    secret_bits = text_to_bits(secret_text)
+    end_marker = '1111111111111110'  # End Marker
+    secret_bits_with_marker = secret_bits + end_marker
+    
+    # Check if the image has enough capacity
+    capacity = get_pvd_capacity(image)
+    if len(secret_bits_with_marker) > capacity:
+        raise ValueError(f"Message too large for this image. Capacity: {capacity} bits, Message: {len(secret_bits_with_marker)} bits")
+    
     # Split into channels
     b, g, r = cv2.split(image)
-    
-    secret_bits = text_to_bits(secret_text)
-    secret_bits += '1111111111111110'  # End Marker
     bit_idx = 0
     
     # Embed in each channel sequentially
-    r_stego, bit_idx = embed_pvd_channel(r, secret_bits, bit_idx)
-    g_stego, bit_idx = embed_pvd_channel(g, secret_bits, bit_idx)
-    b_stego, bit_idx = embed_pvd_channel(b, secret_bits, bit_idx)
+    r_stego, bit_idx = embed_pvd_channel(r, secret_bits_with_marker, bit_idx)
+    
+    # Only continue to next channel if we haven't embedded all bits
+    if bit_idx < len(secret_bits_with_marker):
+        g_stego, bit_idx = embed_pvd_channel(g, secret_bits_with_marker, bit_idx)
+    else:
+        g_stego = g.copy()
+    
+    # Only continue to next channel if we haven't embedded all bits
+    if bit_idx < len(secret_bits_with_marker):
+        b_stego, bit_idx = embed_pvd_channel(b, secret_bits_with_marker, bit_idx)
+    else:
+        b_stego = b.copy()
     
     # Merge channels
     stego_image = cv2.merge([b_stego, g_stego, r_stego])
@@ -103,13 +151,17 @@ def embed_pvd(image_path, secret_text, output_dir=None):
         output_dir = os.path.dirname(image_path)
     
     # Create output filename
-    input_filename = os.path.basename(image_path)
-    filename_without_ext = os.path.splitext(input_filename)[0]
     output_path = os.path.join(output_dir, "pvd_stego.png")
     
     # Save with lossless compression
     compression_params = [cv2.IMWRITE_PNG_COMPRESSION, 9]
     cv2.imwrite(output_path, stego_image, compression_params)
+    
+    # Print information about the embedding
+    print(f"[INFO] Stego-image saved to {output_path}")
+    print(f"[INFO] Successfully stored {bit_idx} bits out of {len(secret_bits_with_marker)} bits")
+    print(f"[INFO] Original message length: {len(secret_bits)} bits")
+    print(f"[INFO] Image capacity: {capacity} bits")
     
     return output_path
     

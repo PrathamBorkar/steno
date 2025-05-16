@@ -3,7 +3,7 @@ import os
 from werkzeug.utils import secure_filename
 from lsb import encode as lsb_encode, decode as lsb_decode
 from dct import encode as dct_encode, decode as dct_decode
-from patchwork import embed_watermark, extract_watermark
+from patchwork2 import embed_watermark, extract_watermark
 from PVD_Encode import embed_pvd
 from PVD_Decode import extract_pvd
 import tempfile
